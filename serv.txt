@@ -1,0 +1,1 @@
+C:/Users/KIIT/anaconda3/Scripts/conda.exe run -p C:\Users\KIIT\anaconda3 --no-capture-output python app.py

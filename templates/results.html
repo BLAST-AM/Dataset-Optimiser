@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - {{ filename }}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Orbitron:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
+</head>
+<body class="dash-body">
+
+<div class="dash-bg" aria-hidden="true"></div>
+
+<div class="container-fluid">
+    <div class="row dash-shell">
+        <div class="col-md-2 dash-sidebar p-4">
+            <div class="dash-brand">Dataset Optimiser</div>
+            <div class="dash-kv mt-1">Quality • Visuals • Cleaning</div>
+            <hr style="border-color: rgba(255,255,255,0.18);">
+            <ul class="nav flex-column dash-nav">
+                <li class="nav-item"><a href="/" class="nav-link">Upload New</a></li>
+                <li class="nav-item"><a href="#tab-summary" class="nav-link active" data-bs-toggle="tab" role="tab" aria-controls="tab-summary" aria-selected="true">Summary</a></li>
+                <li class="nav-item"><a href="#tab-charts" class="nav-link" data-bs-toggle="tab" role="tab" aria-controls="tab-charts" aria-selected="false">Graphs / Charts</a></li>
+                <li class="nav-item"><a href="#tab-actions" class="nav-link" data-bs-toggle="tab" role="tab" aria-controls="tab-actions" aria-selected="false">Actions</a></li>
+            </ul>
+        </div>
+
+        <div class="col-md-10 p-4">
+            <div class="d-flex flex-wrap align-items-end justify-content-between gap-2 mb-4">
+                <div>
+                    <div class="dash-title h3 mb-1"><span class="dash-emoji emoji-bob" aria-hidden="true">📊</span>Analysis Report</div>
+                    <div class="dash-subtitle">{{ filename }}</div>
+                </div>
+                <div class="d-flex flex-wrap gap-2 align-items-center justify-content-end">
+                    <a href="/report/{{ filename }}" class="btn btn-outline-light btn-sm">📄 Download PDF Report</a>
+                    <div class="dash-kv">Generated visuals and summary metrics</div>
+                </div>
+            </div>
+
+            <div class="dash-tabbar mb-3" role="navigation" aria-label="Report tabs">
+                <ul class="nav nav-pills dash-pills" id="reportTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="tab-summary-btn" data-bs-toggle="tab" data-bs-target="#tab-summary" type="button" role="tab" aria-controls="tab-summary" aria-selected="true">Summary</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="tab-charts-btn" data-bs-toggle="tab" data-bs-target="#tab-charts" type="button" role="tab" aria-controls="tab-charts" aria-selected="false">Graphs / Charts / Plots</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="tab-actions-btn" data-bs-toggle="tab" data-bs-target="#tab-actions" type="button" role="tab" aria-controls="tab-actions" aria-selected="false">Actions</button>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="tab-content" id="reportTabsContent">
+                <div class="tab-pane fade show active" id="tab-summary" role="tabpanel" aria-labelledby="tab-summary-btn" tabindex="0">
+
+            <div class="row mb-4">
+                <div class="col-md-4">
+                    <div class="dash-card p-3 text-center">
+                        <div class="dash-kv">Total Rows</div>
+                        <div class="dash-metric">{{ rows }}</div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="dash-card p-3 text-center">
+                        <div class="dash-kv">Total Columns</div>
+                        <div class="dash-metric">{{ cols }}</div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="dash-card p-3 text-center">
+                        <div class="dash-kv">Missing Values</div>
+                        <div class="dash-metric {{ 'dash-metric--danger' if missing > 0 else 'dash-metric--ok' }}">{{ missing }}</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="dash-card p-3">
+                <div class="dash-section-h mb-1"><span class="dash-emoji emoji-wiggle" aria-hidden="true">🧭</span>Quick Links</div>
+                <div class="dash-kv">Use the left sidebar or tabs to jump between sections.</div>
+            </div>
+
+            <details class="dash-details mt-3">
+                <summary class="dash-details__summary">Dataset Details</summary>
+                <div class="dash-details__body">
+                    {% if dataset_details %}
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <div class="dash-card p-3 text-center">
+                                <div class="dash-kv">Features</div>
+                                <div class="dash-metric">{{ dataset_details.cols }}</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="dash-card p-3 text-center">
+                                <div class="dash-kv">Numeric</div>
+                                <div class="dash-metric">{{ dataset_details.numeric_features }}</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="dash-card p-3 text-center">
+                                <div class="dash-kv">Categorical</div>
+                                <div class="dash-metric">{{ dataset_details.categorical_features }}</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="dash-card p-3 text-center">
+                                <div class="dash-kv">Duplicates</div>
+                                <div class="dash-metric">{{ dataset_details.duplicate_rows }}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mt-1">
+                        <div class="col-md-6">
+                            <div class="dash-card p-3">
+                                <div class="dash-kv">Missing Total</div>
+                                <div style="color: rgba(255,255,255,0.86);">{{ dataset_details.missing_total }} ({{ dataset_details.missing_pct }}%)</div>
+                                <div class="dash-kv mt-2">Datetime Detected</div>
+                                <div style="color: rgba(255,255,255,0.86);">{{ dataset_details.datetime_detected if dataset_details.datetime_detected else 'None' }}</div>
+                                <div class="dash-kv mt-2">Memory</div>
+                                <div style="color: rgba(255,255,255,0.86);">{{ dataset_details.memory_mb }} MB</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="dash-card p-3">
+                                <div class="dash-kv">DTypes</div>
+                                <div style="color: rgba(255,255,255,0.86);">
+                                    {% for k, v in dataset_details.dtype_counts.items() %}
+                                        <span>{{ k }}: {{ v }}{% if not loop.last %} · {% endif %}</span>
+                                    {% endfor %}
+                                </div>
+
+                                {% if dataset_details.top_missing and dataset_details.top_missing|length > 0 %}
+                                <div class="dash-kv mt-2">Top Missing Columns</div>
+                                <div style="color: rgba(255,255,255,0.86);">
+                                    {% for col, cnt in dataset_details.top_missing %}
+                                        <span>{{ col }}: {{ cnt }}{% if not loop.last %} · {% endif %}</span>
+                                    {% endfor %}
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    {% else %}
+                        <div class="alert alert-warning mt-2" role="alert">Dataset details not available.</div>
+                    {% endif %}
+                </div>
+            </details>
+
+            <details class="dash-details mt-3">
+                <summary class="dash-details__summary">Columns</summary>
+                <div class="dash-details__body">
+                    <div class="dash-kv mb-2">Detected fields in the uploaded dataset</div>
+                    <div style="max-height: 320px; overflow:auto;">
+                        <ul class="mb-0">
+                            {% for col in columns %}
+                                <li>{{ col }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+            </details>
+
+                </div>
+
+                <div class="tab-pane fade" id="tab-charts" role="tabpanel" aria-labelledby="tab-charts-btn" tabindex="0">
+                    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+                        <div class="dash-section-h">Graphs / Charts / Plots</div>
+                        <div class="dash-kv">Click any thumbnail to open zoomable viewer.</div>
+                    </div>
+
+                    <div class="dash-gallery mb-4">
+                        <div class="dash-gallery__item">
+                            <div class="dash-gallery__title">Missing Value Distribution</div>
+                            <img src="{{ url_for('static', filename='images/' + plot_image) }}" alt="Missing Values Plot" class="js-chart dash-thumb" data-chart-title="Missing Value Distribution" loading="lazy">
+                        </div>
+
+                        {% if extra_images and extra_images.get('categorical_bar') %}
+                        <div class="dash-gallery__item">
+                            <div class="dash-gallery__title">Categorical Comparison</div>
+                            <img src="{{ url_for('static', filename='images/' + extra_images.get('categorical_bar')) }}" alt="Categorical Bar Chart" class="js-chart dash-thumb" data-chart-title="Categorical Comparison" loading="lazy">
+                        </div>
+                        {% endif %}
+
+                        {% if extra_images and extra_images.get('time_series_line') %}
+                        <div class="dash-gallery__item">
+                            <div class="dash-gallery__title">Time-Series Trend</div>
+                            <img src="{{ url_for('static', filename='images/' + extra_images.get('time_series_line')) }}" alt="Time Series Line Graph" class="js-chart dash-thumb" data-chart-title="Time-Series Trend" loading="lazy">
+                        </div>
+                        {% endif %}
+
+                        {% if extra_images and extra_images.get('numerical_hist') %}
+                        <div class="dash-gallery__item">
+                            <div class="dash-gallery__title">Numerical Distributions</div>
+                            <img src="{{ url_for('static', filename='images/' + extra_images.get('numerical_hist')) }}" alt="Numerical Histograms" class="js-chart dash-thumb" data-chart-title="Numerical Distributions" loading="lazy">
+                        </div>
+                        {% endif %}
+
+                        {% if extra_images and extra_images.get('scatter_corr') %}
+                        <div class="dash-gallery__item">
+                            <div class="dash-gallery__title">Scatter Plot</div>
+                            <img src="{{ url_for('static', filename='images/' + extra_images.get('scatter_corr')) }}" alt="Scatter Plot" class="js-chart dash-thumb" data-chart-title="Scatter Plot" loading="lazy">
+                        </div>
+                        {% endif %}
+
+                        {% if extra_images and extra_images.get('boxplot') %}
+                        <div class="dash-gallery__item">
+                            <div class="dash-gallery__title">Box Plot</div>
+                            <img src="{{ url_for('static', filename='images/' + extra_images.get('boxplot')) }}" alt="Box Plot" class="js-chart dash-thumb" data-chart-title="Box Plot" loading="lazy">
+                        </div>
+                        {% endif %}
+
+                        {% if extra_images and extra_images.get('corr_heatmap') %}
+                        <div class="dash-gallery__item">
+                            <div class="dash-gallery__title">Correlation Heatmap</div>
+                            <img src="{{ url_for('static', filename='images/' + extra_images.get('corr_heatmap')) }}" alt="Correlation Heatmap" class="js-chart dash-thumb" data-chart-title="Correlation Heatmap" loading="lazy">
+                        </div>
+                        {% endif %}
+
+                        {% if cm_image %}
+                        <div class="dash-gallery__item">
+                            <div class="dash-gallery__title">Confusion Matrix</div>
+                            <img src="{{ url_for('static', filename='images/' + cm_image) }}" alt="Confusion Matrix" class="js-chart dash-thumb" data-chart-title="Confusion Matrix" loading="lazy">
+                        </div>
+                        {% endif %}
+
+                        {% if eval_image %}
+                        <div class="dash-gallery__item">
+                            <div class="dash-gallery__title">Evaluation Plot</div>
+                            <img src="{{ url_for('static', filename='images/' + eval_image) }}" alt="Evaluation Plot" class="js-chart dash-thumb" data-chart-title="{{ eval_image_title if eval_image_title else 'Evaluation Plot' }}" loading="lazy">
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="tab-pane fade" id="tab-actions" role="tabpanel" aria-labelledby="tab-actions-btn" tabindex="0">
+
+            {% if recommendations and recommendations|length > 0 %}
+                <div class="dash-card p-3 mb-3">
+                    <div class="dash-section-h mb-1">Suggested Next Actions</div>
+                    <div class="dash-kv">Based on your dataset profile:</div>
+                    <ul class="mb-0" style="color: rgba(255,255,255,0.86);">
+                        {% for rec in recommendations %}
+                            <li>{{ rec }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            {% endif %}
+
+            <div class="row" id="next">
+                <div class="col-12">
+                    {% if missing > 0 %}
+                        <div class="dash-card dash-card--strong p-4">
+                            <div class="dash-section-h mb-1">Next Step • Intelligent Cleaning</div>
+                            <div class="dash-subtitle mb-3">Choose a strategy to resolve missing values.</div>
+                            
+                            <form action="/clean" method="post">
+                                <input type="hidden" name="filename" value="{{ filename }}">
+                                
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <label class="form-label fw-bold" style="color: rgba(255,255,255,0.9);">Strategy</label>
+                                        <select name="strategy" class="form-select" id="strategySelect">
+                                            <option value="drop">❌ Drop Rows (Remove missing data)</option>
+                                            <option value="mean">📊 Simple Imputation (Replace with Mean/Mode)</option>
+                                            <option value="knn" selected>🤖 KNN Imputation (Machine Learning)</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-8">
+                                        <div class="alert mt-4" id="strategyDesc" style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.16); color: rgba(255,255,255,0.86);">
+                                            <strong>KNN (K-Nearest Neighbors):</strong> Estimates missing numeric values using nearby similar rows.
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <button type="submit" class="btn btn-success btn-lg mt-3">
+                                    ✨ Run Intelligent Cleaning
+                                </button>
+                            </form>
+                        </div>
+                    {% else %}
+                        <div class="dash-card dash-card--strong p-4">
+                            <div class="dash-section-h mb-1">Next Step • Optimization & Feature Engineering</div>
+                            <div class="dash-subtitle mb-3">No missing values detected. Use a few safe optimizations to improve performance and model-readiness.</div>
+
+                            <form action="/optimize" method="post">
+                                <input type="hidden" name="filename" value="{{ filename }}">
+
+                                <div class="row g-3 mb-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold" style="color: rgba(255,255,255,0.9);">Target column (optional)</label>
+                                        <select name="target" class="form-select">
+                                            <option value="" selected>(None)</option>
+                                            {% for col in columns %}
+                                                <option value="{{ col }}">{{ col }}</option>
+                                            {% endfor %}
+                                        </select>
+                                        <small class="text-muted">Needed for SMOTE / feature selection; PCA will keep target untouched.</small>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="dash-kv" style="margin-top: 34px;">Tip: start with dtype + outliers + correlated-drop.</div>
+                                    </div>
+                                </div>
+
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" name="opt_dtype" id="opt_dtype" checked>
+                                            <label class="form-check-label" for="opt_dtype">
+                                                Data Type Optimization (downcast numerics + convert strings to category)
+                                            </label>
+                                        </div>
+
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" name="opt_onehot" id="opt_onehot">
+                                            <label class="form-check-label" for="opt_onehot">
+                                                Encode Categorical Data (one-hot encoding)
+                                            </label>
+                                        </div>
+
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" name="opt_log" id="opt_log">
+                                            <label class="form-check-label" for="opt_log">
+                                                Log Transform Skewed Numeric Columns
+                                            </label>
+                                        </div>
+
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" name="opt_bin" id="opt_bin">
+                                            <label class="form-check-label" for="opt_bin">
+                                                Add Binned Feature (quartiles for first numeric column)
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    <div class="col-md-6">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" name="opt_outliers" id="opt_outliers" checked>
+                                            <label class="form-check-label" for="opt_outliers">
+                                                Handle Outliers (Winsorize/cap at 1st & 99th percentiles)
+                                            </label>
+                                        </div>
+
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" name="opt_scale" id="opt_scale">
+                                            <label class="form-check-label" for="opt_scale">
+                                                Feature Scaling / Normalization (StandardScaler)
+                                            </label>
+                                        </div>
+
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" name="opt_corr_drop" id="opt_corr_drop" checked>
+                                            <label class="form-check-label" for="opt_corr_drop">
+                                                Remove Redundant Features (drop highly correlated columns)
+                                            </label>
+                                        </div>
+
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" name="opt_pca" id="opt_pca">
+                                            <label class="form-check-label" for="opt_pca">
+                                                Dimensionality Reduction (PCA to 95% variance)
+                                            </label>
+                                        </div>
+
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" name="opt_feature_select" id="opt_feature_select">
+                                            <label class="form-check-label" for="opt_feature_select">
+                                                Feature Selection (Random Forest importance)
+                                            </label>
+                                        </div>
+
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" name="opt_smote" id="opt_smote">
+                                            <label class="form-check-label" for="opt_smote">
+                                                Handle Class Imbalance (SMOTE / oversampling)
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <button type="submit" class="btn btn-primary btn-lg mt-3">
+                                    🚀 Run Optimization
+                                </button>
+                            </form>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="row mt-4" id="evaluate">
+                <div class="col-12">
+                    {% if eval_possible %}
+                        <div class="dash-card dash-card--strong p-4">
+                            <div class="dash-section-h mb-1">Model Evaluation</div>
+                            <div class="dash-subtitle mb-3">Pick a target column and evaluate it (auto-detects classification vs regression).</div>
+
+                            <form action="/evaluate" method="post">
+                                <input type="hidden" name="filename" value="{{ filename }}">
+
+                                <div class="row g-3">
+                                    <div class="col-md-5">
+                                        <label class="form-label fw-bold" style="color: rgba(255,255,255,0.9);">Target (label) column</label>
+                                        <select name="target" class="form-select" required>
+                                            <option value="" disabled {% if not eval_result or eval_result.error %}selected{% endif %}>(Select)</option>
+                                            {% for col in eval_targets %}
+                                                <option value="{{ col }}" {% if eval_result and (not eval_result.error) and eval_result.target == col %}selected{% endif %}>{{ col }}</option>
+                                            {% endfor %}
+                                        </select>
+                                        <small class="text-muted">Supports classification (few classes) or regression (numeric targets).</small>
+                                    </div>
+
+                                    <div class="col-md-4">
+                                        <label class="form-label fw-bold" style="color: rgba(255,255,255,0.9);">Model</label>
+                                        <select name="model" class="form-select">
+                                            <option value="logreg">Logistic / Linear Regression (auto)</option>
+                                            <option value="rf">Random Forest</option>
+                                            <option value="svm">SVM (RBF)</option>
+                                            <option value="knn">KNN</option>
+                                        </select>
+                                    </div>
+
+                                    <div class="col-md-3">
+                                        <label class="form-label fw-bold" style="color: rgba(255,255,255,0.9);">Test size</label>
+                                        <select name="test_size" class="form-select">
+                                            <option value="0.1">10%</option>
+                                            <option value="0.2" selected>20%</option>
+                                            <option value="0.3">30%</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <button type="submit" class="btn btn-primary btn-lg mt-3">📌 Run Evaluation</button>
+                            </form>
+
+                            {% if eval_result %}
+                                <div class="mt-4">
+                                    {% if eval_result.error %}
+                                        <div class="alert alert-danger" role="alert">{{ eval_result.error }}</div>
+                                    {% else %}
+                                        {% if eval_result.task == 'regression' %}
+                                            <div class="row g-3">
+                                                <div class="col-md-4">
+                                                    <div class="dash-card p-3 text-center">
+                                                        <div class="dash-kv">R²</div>
+                                                        <div class="dash-metric">{{ eval_result.r2 }}</div>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <div class="dash-card p-3 text-center">
+                                                        <div class="dash-kv">MAE</div>
+                                                        <div class="dash-metric">{{ eval_result.mae }}</div>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <div class="dash-card p-3 text-center">
+                                                        <div class="dash-kv">RMSE</div>
+                                                        <div class="dash-metric">{{ eval_result.rmse }}</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="dash-card p-3 mt-3" style="background: rgba(255,255,255,0.06);">
+                                                <div class="dash-kv">Evaluation plot is available in the “Graphs / Charts / Plots” tab.</div>
+                                            </div>
+                                        {% else %}
+                                            <div class="row g-3">
+                                                <div class="col-md-3">
+                                                    <div class="dash-card p-3 text-center">
+                                                        <div class="dash-kv">Accuracy</div>
+                                                        <div class="dash-metric">{{ eval_result.accuracy }}</div>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <div class="dash-card p-3 text-center">
+                                                        <div class="dash-kv">Precision (macro)</div>
+                                                        <div class="dash-metric">{{ eval_result.precision_macro }}</div>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <div class="dash-card p-3 text-center">
+                                                        <div class="dash-kv">Recall (macro)</div>
+                                                        <div class="dash-metric">{{ eval_result.recall_macro }}</div>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <div class="dash-card p-3 text-center">
+                                                        <div class="dash-kv">F1 (macro)</div>
+                                                        <div class="dash-metric">{{ eval_result.f1_macro }}</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="dash-card p-3 mt-3" style="background: rgba(255,255,255,0.06);">
+                                                <div class="dash-kv">Confusion matrix chart is available in the “Graphs / Charts / Plots” tab.</div>
+                                            </div>
+                                        {% endif %}
+                                    {% endif %}
+                                </div>
+                            {% endif %}
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <details class="dash-details mt-4" id="preview">
+                <summary class="dash-details__summary">Preview (first 5 rows)</summary>
+                <div class="dash-details__body">
+                    <div class="dash-card p-3">
+                        <div class="dash-section-h mb-2">Preview</div>
+                        <div class="dash-kv mb-3">First 5 rows from the uploaded dataset</div>
+                        <div class="table-responsive dash-table">
+                            {{ table | safe }}
+                        </div>
+                    </div>
+                </div>
+            </details>
+
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<!-- Chart Viewer Modal (click any chart) -->
+<div class="modal fade" id="chartModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content dash-modal">
+            <div class="modal-header">
+                <h5 class="modal-title" id="chartModalTitle">Chart</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+                    <button type="button" class="btn btn-sm btn-outline-light" id="zoomOutBtn">-</button>
+                    <button type="button" class="btn btn-sm btn-outline-light" id="zoomInBtn">+</button>
+                    <button type="button" class="btn btn-sm btn-outline-light" id="zoomResetBtn">Reset</button>
+                    <div class="ms-auto dash-kv">Tip: Ctrl + mouse wheel to zoom</div>
+                </div>
+                <div class="dash-zoom" id="chartZoom" role="region" aria-label="Zoomable chart viewer">
+                    <img id="chartModalImg" alt="Chart" />
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+  (function () {
+    const root = document.documentElement;
+    let tx = 0.55;
+    let ty = 0.35;
+    let cx = tx;
+    let cy = ty;
+
+    function onMove(e) {
+      const w = window.innerWidth || 1;
+      const h = window.innerHeight || 1;
+      tx = Math.min(1, Math.max(0, e.clientX / w));
+      ty = Math.min(1, Math.max(0, e.clientY / h));
+    }
+
+    window.addEventListener('mousemove', onMove, { passive: true });
+
+    function tick() {
+      // smooth the motion
+      cx += (tx - cx) * 0.06;
+      cy += (ty - cy) * 0.06;
+      root.style.setProperty('--mx', cx.toFixed(4));
+      root.style.setProperty('--my', cy.toFixed(4));
+      requestAnimationFrame(tick);
+    }
+
+    requestAnimationFrame(tick);
+  })();
+</script>
+
+<script>
+    (function () {
+        const modalEl = document.getElementById('chartModal');
+        const modalTitle = document.getElementById('chartModalTitle');
+        const modalImg = document.getElementById('chartModalImg');
+        const zoomWrap = document.getElementById('chartZoom');
+        const zoomIn = document.getElementById('zoomInBtn');
+        const zoomOut = document.getElementById('zoomOutBtn');
+        const zoomReset = document.getElementById('zoomResetBtn');
+        if (!modalEl || !modalTitle || !modalImg || !zoomWrap || !zoomIn || !zoomOut || !zoomReset) return;
+
+        const modal = new bootstrap.Modal(modalEl, { backdrop: true });
+        let scale = 1;
+
+        function applyScale() {
+            modalImg.style.transform = `scale(${scale})`;
+        }
+
+        function resetZoom() {
+            scale = 1;
+            zoomWrap.scrollTop = 0;
+            zoomWrap.scrollLeft = 0;
+            applyScale();
+        }
+
+        function openChart(img) {
+            const src = img.getAttribute('src');
+            const title = img.getAttribute('data-chart-title') || img.getAttribute('alt') || 'Chart';
+            modalTitle.textContent = title;
+            modalImg.setAttribute('src', src);
+            resetZoom();
+            modal.show();
+        }
+
+        document.querySelectorAll('img.js-chart').forEach((img) => {
+            img.addEventListener('click', () => openChart(img));
+            img.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    openChart(img);
+                }
+            });
+            img.setAttribute('tabindex', '0');
+            img.setAttribute('role', 'button');
+        });
+
+        zoomIn.addEventListener('click', () => {
+            scale = Math.min(6, +(scale + 0.25).toFixed(2));
+            applyScale();
+        });
+
+        zoomOut.addEventListener('click', () => {
+            scale = Math.max(1, +(scale - 0.25).toFixed(2));
+            applyScale();
+        });
+
+        zoomReset.addEventListener('click', resetZoom);
+
+        // Ctrl+wheel zoom (keeps normal scrolling otherwise)
+        zoomWrap.addEventListener('wheel', (e) => {
+            if (!e.ctrlKey) return;
+            e.preventDefault();
+            const delta = Math.sign(e.deltaY);
+            scale = Math.max(1, Math.min(6, +(scale + (delta > 0 ? -0.2 : 0.2)).toFixed(2)));
+            applyScale();
+        }, { passive: false });
+
+        modalEl.addEventListener('hidden.bs.modal', () => {
+            modalImg.removeAttribute('src');
+            resetZoom();
+        });
+    })();
+</script>
+
+<script>
+    (function () {
+        const select = document.getElementById('strategySelect');
+        const desc = document.getElementById('strategyDesc');
+        if (!select || !desc) return;
+
+        const map = {
+            drop: '<strong>Drop Rows:</strong> Removes rows that contain missing values. Fast, but may discard useful data.',
+            mean: '<strong>Simple Imputation (Mean/Mode):</strong> Fills numeric columns with the mean and categorical columns with the most frequent value.',
+            knn: '<strong>KNN (K-Nearest Neighbors):</strong> Estimates missing numeric values using nearby similar rows; uses mode for non-numeric columns.'
+        };
+
+        function update() {
+            const key = select.value;
+            desc.innerHTML = map[key] || map.knn;
+        }
+
+        select.addEventListener('change', update);
+        update();
+    })();
+</script>
+
+<script>
+    (function () {
+        // Keep sidebar “active” state in sync with current tab.
+        const sideLinks = document.querySelectorAll('.dash-nav .nav-link[data-bs-toggle="tab"]');
+        const tabEls = document.querySelectorAll('#reportTabs button[data-bs-toggle="tab"]');
+        if (!sideLinks.length || !tabEls.length) return;
+
+        function setActiveSideByHash(hash) {
+            sideLinks.forEach((a) => a.classList.remove('active'));
+            const match = Array.from(sideLinks).find((a) => a.getAttribute('href') === hash);
+            if (match) match.classList.add('active');
+        }
+
+        tabEls.forEach((btn) => {
+            btn.addEventListener('shown.bs.tab', (e) => {
+                const target = e.target?.getAttribute('data-bs-target');
+                if (target) setActiveSideByHash(target);
+            });
+        });
+
+        // When clicking the sidebar, route the activation through the top pills
+        // so both controls stay synchronized.
+        sideLinks.forEach((a) => {
+            a.addEventListener('click', (e) => {
+                const hash = a.getAttribute('href');
+                if (!hash) return;
+                const trigger = document.querySelector(`[data-bs-target="${hash}"]`);
+                if (!trigger) return;
+                e.preventDefault();
+                bootstrap.Tab.getOrCreateInstance(trigger).show();
+                history.replaceState(null, '', hash);
+            });
+        });
+
+        // If user loads with a hash, activate that tab.
+        if (location.hash && document.querySelector(location.hash)) {
+            const trigger = document.querySelector(`[data-bs-target="${location.hash}"]`);
+            if (trigger) {
+                bootstrap.Tab.getOrCreateInstance(trigger).show();
+                setActiveSideByHash(location.hash);
+            }
+        }
+    })();
+</script>
+
+</body>
+</html>
