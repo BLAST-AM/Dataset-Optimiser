@@ -7,3 +7,4 @@ seaborn
 openpyxl
 imbalanced-learn
 reportlab
+waitress
