@@ -23,16 +23,6 @@ python app.py
 
 Open http://127.0.0.1:5000
 
-## Deploy (Render)
-
-This repo includes a production entrypoint that binds to `0.0.0.0:$PORT`.
-
-1. Push this repo to GitHub.
-2. In Render: New → Web Service → connect the repo.
-3. Configure:
-   - Build command: `pip install -r requirements.txt`
-   - Start command: `python serve.py`
-4. Deploy.
 
 ## Notes
 
