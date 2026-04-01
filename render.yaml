@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: dataset-optimiser
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python serve.py
+    envVars:
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: PYTHON_VERSION
+        value: "3.11.9"
