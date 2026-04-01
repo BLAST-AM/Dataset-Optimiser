@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import os
 import time
+import hashlib
 from io import BytesIO
 from typing import Any
 
@@ -85,6 +86,13 @@ _BASE_CTX_CACHE_TTL_S = 30 * 60
 _BASE_CTX_CACHE_MAX = 12
 _base_ctx_cache: dict[tuple[str, float, int], dict[str, Any]] = {}
 
+_EVAL_CACHE_TTL_S = 30 * 60
+_EVAL_CACHE_MAX = 24
+_eval_cache: dict[tuple[tuple[str, float, int], str, str, float], dict[str, Any]] = {}
+
+# Guardrails for hosted performance (keeps UX identical; sampling may apply for very large uploads)
+_EVAL_MAX_ROWS = 12000
+
 
 def _uploaded_filepath(filename: str) -> str:
     return os.path.join(app.config['UPLOAD_FOLDER'], filename)
@@ -115,6 +123,69 @@ def _cache_prune_now(now: float) -> None:
         ordered = sorted(_base_ctx_cache.items(), key=lambda kv: float(kv[1].get('_cached_at', 0.0)))
         for k, _v in ordered[: max(0, len(_base_ctx_cache) - _BASE_CTX_CACHE_MAX)]:
             _base_ctx_cache.pop(k, None)
+
+    # Eval cache eviction (separate cache, same pruning cadence)
+    expired_eval: list[tuple[tuple[str, float, int], str, str, float]] = []
+    for k, v in _eval_cache.items():
+        cached_at = float(v.get('_cached_at', 0.0))
+        if cached_at and (now - cached_at) > _EVAL_CACHE_TTL_S:
+            expired_eval.append(k)
+    for k in expired_eval:
+        _eval_cache.pop(k, None)
+
+    if len(_eval_cache) > _EVAL_CACHE_MAX:
+        ordered_eval = sorted(_eval_cache.items(), key=lambda kv: float(kv[1].get('_cached_at', 0.0)))
+        for k, _v in ordered_eval[: max(0, len(_eval_cache) - _EVAL_CACHE_MAX)]:
+            _eval_cache.pop(k, None)
+
+
+def _hash_tag(*parts: str) -> str:
+    """Short stable tag used for deterministic eval image filenames."""
+    h = hashlib.sha1()
+    for p in parts:
+        h.update(p.encode('utf-8', errors='ignore'))
+        h.update(b'|')
+    return h.hexdigest()[:12]
+
+
+def _eval_cached_images_exist(entry: dict[str, Any]) -> bool:
+    """Ensure cached eval image filenames still exist on disk."""
+    try:
+        for key in ('cm_image', 'eval_image'):
+            fname = entry.get(key)
+            if fname and not os.path.exists(os.path.join(app.config['STATIC_IMAGE_FOLDER'], str(fname))):
+                return False
+        return True
+    except Exception:
+        return False
+
+
+def _maybe_downsample_for_eval(work: pd.DataFrame, target: str, task: str) -> pd.DataFrame:
+    """Downsample very large datasets to keep evaluation responsive on small CPUs."""
+    try:
+        if work.shape[0] <= _EVAL_MAX_ROWS:
+            return work
+
+        if task == 'classification':
+            y = work[target].astype(str).fillna('Missing')
+            n_classes = int(y.nunique(dropna=True))
+            if n_classes < 2:
+                return work
+
+            per_class = max(3, int(_EVAL_MAX_ROWS // max(1, n_classes)))
+            tmp = work.copy()
+            tmp['_y_str'] = y
+            sampled = (
+                tmp.groupby('_y_str', group_keys=False)
+                .apply(lambda g: g.sample(n=min(len(g), per_class), random_state=42))
+                .drop(columns=['_y_str'])
+            )
+            return sampled
+
+        # regression-like: uniform sample
+        return work.sample(n=_EVAL_MAX_ROWS, random_state=42)
+    except Exception:
+        return work
 
 
 def _base_ctx_images_exist(base: dict[str, Any]) -> bool:
@@ -896,6 +967,29 @@ def evaluate_model():
         if task == 'unknown':
             raise ValueError('Target column is not suitable for evaluation.')
 
+        # Fast path: return cached eval for same dataset+params
+        now = time.time()
+        _cache_prune_now(now)
+        sig = _dataset_signature(filename)
+        cache_key: tuple[tuple[str, float, int], str, str, float] | None = None
+        if sig is not None and target and model_name:
+            cache_key = (sig, str(target), str(model_name), float(test_size))
+            cached = _eval_cache.get(cache_key)
+            if cached and _eval_cached_images_exist(cached):
+                ctx = _build_report_context(
+                    df,
+                    filename,
+                    eval_result=cached.get('eval_result'),
+                    cm_image=cached.get('cm_image'),
+                    eval_image=cached.get('eval_image'),
+                    eval_image_title=cached.get('eval_image_title'),
+                )
+                return render_template('results.html', **ctx)
+
+        # Keep hosted performance reasonable for large datasets
+        work = _maybe_downsample_for_eval(work, target, task)
+        y_raw = work[target]
+
         X = work.drop(columns=[target])
 
         numeric_features = X.select_dtypes(include=[np.number]).columns.tolist()
@@ -924,7 +1018,7 @@ def evaluate_model():
         )
 
         stem = _safe_stem(filename)
-        nonce = str(int(time.time() * 1000))
+        tag = _hash_tag(str(sig) if sig is not None else str(filename), str(target), str(model_name), str(test_size), str(task))
 
         if task == 'classification':
             y = y_raw.astype(str).fillna('Missing')
@@ -979,8 +1073,17 @@ def evaluate_model():
                 cm,
                 labels,
                 f'Confusion Matrix ({model_label})',
-                f'cm_{stem}_{nonce}.png',
+                f'cm_{stem}_{tag}.png',
             )
+
+            if cache_key is not None:
+                _eval_cache[cache_key] = {
+                    'eval_result': eval_result,
+                    'cm_image': cm_image,
+                    'eval_image': None,
+                    'eval_image_title': None,
+                    '_cached_at': now,
+                }
             ctx = _build_report_context(df, filename, eval_result=eval_result, cm_image=cm_image)
             return render_template('results.html', **ctx)
 
@@ -1032,8 +1135,17 @@ def evaluate_model():
             np.asarray(y_test),
             np.asarray(y_pred),
             f'Actual vs Predicted ({model_label})',
-            f'reg_{stem}_{nonce}.png',
+            f'reg_{stem}_{tag}.png',
         )
+
+        if cache_key is not None:
+            _eval_cache[cache_key] = {
+                'eval_result': eval_result,
+                'cm_image': None,
+                'eval_image': eval_image,
+                'eval_image_title': 'Regression: Actual vs Predicted',
+                '_cached_at': now,
+            }
         ctx = _build_report_context(
             df,
             filename,
