@@ -76,6 +76,101 @@ os.makedirs(STATIC_IMAGE_FOLDER, exist_ok=True)
 
 
 # ------------------------------
+# Simple in-memory caches (ephemeral)
+# ------------------------------
+
+# Render free tier is CPU constrained; avoid recomputing plots/stats on every POST.
+# These caches live only for the lifetime of a single running instance.
+_BASE_CTX_CACHE_TTL_S = 30 * 60
+_BASE_CTX_CACHE_MAX = 12
+_base_ctx_cache: dict[tuple[str, float, int], dict[str, Any]] = {}
+
+
+def _uploaded_filepath(filename: str) -> str:
+    return os.path.join(app.config['UPLOAD_FOLDER'], filename)
+
+
+def _dataset_signature(filename: str) -> tuple[str, float, int] | None:
+    """Return a stable signature for the uploaded dataset on disk."""
+    path = _uploaded_filepath(filename)
+    try:
+        stat = os.stat(path)
+        return filename, float(stat.st_mtime), int(stat.st_size)
+    except Exception:
+        return None
+
+
+def _cache_prune_now(now: float) -> None:
+    # TTL eviction
+    expired: list[tuple[str, float, int]] = []
+    for k, v in _base_ctx_cache.items():
+        cached_at = float(v.get('_cached_at', 0.0))
+        if cached_at and (now - cached_at) > _BASE_CTX_CACHE_TTL_S:
+            expired.append(k)
+    for k in expired:
+        _base_ctx_cache.pop(k, None)
+
+    # size eviction (oldest first)
+    if len(_base_ctx_cache) > _BASE_CTX_CACHE_MAX:
+        ordered = sorted(_base_ctx_cache.items(), key=lambda kv: float(kv[1].get('_cached_at', 0.0)))
+        for k, _v in ordered[: max(0, len(_base_ctx_cache) - _BASE_CTX_CACHE_MAX)]:
+            _base_ctx_cache.pop(k, None)
+
+
+def _base_ctx_images_exist(base: dict[str, Any]) -> bool:
+    """Best-effort check to ensure cached image filenames still exist on disk."""
+    try:
+        plot_image = base.get('plot_image')
+        if plot_image:
+            if not os.path.exists(os.path.join(app.config['STATIC_IMAGE_FOLDER'], str(plot_image))):
+                return False
+
+        extra_images = base.get('extra_images')
+        if isinstance(extra_images, dict):
+            for _k, fname in extra_images.items():
+                if fname and not os.path.exists(os.path.join(app.config['STATIC_IMAGE_FOLDER'], str(fname))):
+                    return False
+        return True
+    except Exception:
+        return False
+
+
+def _get_or_build_base_context(df: pd.DataFrame, filename: str) -> dict[str, Any]:
+    """Return cached expensive context (plots/stats) for `results.html` when possible."""
+    now = time.time()
+    _cache_prune_now(now)
+
+    sig = _dataset_signature(filename)
+    if sig is not None:
+        cached = _base_ctx_cache.get(sig)
+        if cached and _base_ctx_images_exist(cached):
+            return cached
+
+    dataset_details = compute_dataset_details(df)
+    eval_possible, eval_targets, _eval_reason = _eval_capabilities(df)
+    recommendations = _build_recommendations(df)
+
+    head_data = df.head(5).to_html(classes='table table-striped table-bordered', index=False)
+    plot_image = generate_plot(df, filename)
+    extra_images = generate_additional_visualizations(df, filename)
+
+    base: dict[str, Any] = {
+        'dataset_details': dataset_details,
+        'eval_possible': eval_possible,
+        'eval_targets': eval_targets,
+        'recommendations': recommendations,
+        'table': head_data,
+        'plot_image': plot_image,
+        'extra_images': extra_images,
+        '_cached_at': now,
+    }
+
+    if sig is not None:
+        _base_ctx_cache[sig] = base
+    return base
+
+
+# ------------------------------
 # Small file/path helpers
 # ------------------------------
 
@@ -474,31 +569,25 @@ def _build_report_context(
     missing_values = int(df.isnull().sum().sum())
     columns = df.columns.tolist()
 
-    dataset_details = compute_dataset_details(df)
-    eval_possible, eval_targets, _eval_reason = _eval_capabilities(df)
-    recommendations = _build_recommendations(df)
-
-    head_data = df.head(5).to_html(classes='table table-striped table-bordered', index=False)
-    plot_image = generate_plot(df, filename)
-    extra_images = generate_additional_visualizations(df, filename)
+    base = _get_or_build_base_context(df, filename)
 
     return {
         'filename': filename,
         'rows': rows,
         'cols': cols,
         'missing': missing_values,
-        'dataset_details': dataset_details,
+        'dataset_details': base.get('dataset_details'),
         'columns': columns,
-        'table': head_data,
-        'plot_image': plot_image,
-        'extra_images': extra_images,
-        'eval_possible': eval_possible,
-        'eval_targets': eval_targets,
+        'table': base.get('table'),
+        'plot_image': base.get('plot_image'),
+        'extra_images': base.get('extra_images'),
+        'eval_possible': base.get('eval_possible'),
+        'eval_targets': base.get('eval_targets'),
         'eval_result': eval_result,
         'cm_image': cm_image,
         'eval_image': eval_image,
         'eval_image_title': eval_image_title,
-        'recommendations': recommendations,
+        'recommendations': base.get('recommendations'),
     }
 
 
@@ -855,7 +944,7 @@ def evaluate_model():
             )
 
             if model_name == 'rf':
-                estimator = RandomForestClassifier(n_estimators=250, random_state=42, n_jobs=-1)
+                estimator = RandomForestClassifier(n_estimators=120, random_state=42, n_jobs=-1)
                 model_label = 'Random Forest'
             elif model_name == 'svm':
                 estimator = SVC(kernel='rbf', gamma='scale')
@@ -864,7 +953,7 @@ def evaluate_model():
                 estimator = KNeighborsClassifier(n_neighbors=5)
                 model_label = 'KNN (k=5)'
             else:
-                estimator = LogisticRegression(max_iter=2000)
+                estimator = LogisticRegression(max_iter=1000, solver='saga', n_jobs=-1)
                 model_label = 'Logistic Regression'
 
             clf = Pipeline(steps=[('prep', preprocessor), ('model', estimator)])
@@ -912,7 +1001,7 @@ def evaluate_model():
         )
 
         if model_name == 'rf':
-            estimator = RandomForestRegressor(n_estimators=250, random_state=42, n_jobs=-1)
+            estimator = RandomForestRegressor(n_estimators=120, random_state=42, n_jobs=-1)
             model_label = 'Random Forest Regressor'
         elif model_name == 'svm':
             estimator = SVR(kernel='rbf', gamma='scale')
