@@ -1184,8 +1184,9 @@ def download_report(filename: str):
         from reportlab.lib.pagesizes import A4
         from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
         from reportlab.lib.units import cm
+        from reportlab.lib.utils import ImageReader
         from reportlab.platypus import Image as RLImage
-        from reportlab.platypus import KeepInFrame, PageBreak, Paragraph, SimpleDocTemplate, Spacer
+        from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer
 
         df = _read_uploaded_csv(filename)
         ctx = _build_report_context(df, filename, eval_result=None, cm_image=None)
@@ -1246,18 +1247,39 @@ def download_report(filename: str):
             story.append(Paragraph(caption, h))
             story.append(Spacer(1, 6))
 
-            img = RLImage(path)
+            # Explicitly scale the image to fit within the printable frame.
+            # This avoids ReportLab's "Flowable too large" failures.
             max_w = float(doc.width)
-            # leave room for caption + padding
-            max_h = float(doc.height) - (2.2 * cm)
-            # Best-effort: make the raw image fit inside available area
+            max_h = float(doc.height) - (2.2 * cm)  # leave room for caption + padding
+            if max_h <= 0:
+                max_h = float(doc.height)
+
+            img = RLImage(path)
+            img.hAlign = 'CENTER'
             try:
-                img._restrictSize(max_w, max_h)
+                iw, ih = ImageReader(path).getSize()
+                if iw and ih:
+                    scale = min(max_w / float(iw), max_h / float(ih), 1.0)
+                    img.drawWidth = float(iw) * scale
+                    img.drawHeight = float(ih) * scale
+            except Exception:
+                # Fall back to a conservative width fit.
+                try:
+                    img.drawWidth = max_w
+                    img.drawHeight = max_h
+                except Exception:
+                    return
+
+            # Final guard: if still too tall, shrink again.
+            try:
+                if getattr(img, 'drawHeight', 0) and img.drawHeight > max_h:
+                    s2 = max_h / float(img.drawHeight)
+                    img.drawHeight = float(img.drawHeight) * s2
+                    img.drawWidth = float(img.drawWidth) * s2
             except Exception:
                 pass
 
-            # KeepInFrame will shrink further if needed (never overflows)
-            story.append(KeepInFrame(max_w, max_h, [img], mode='shrink'))
+            story.append(img)
             story.append(Spacer(1, 10))
 
         # Main + extra charts
