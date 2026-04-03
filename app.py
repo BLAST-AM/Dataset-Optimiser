@@ -20,6 +20,7 @@ from __future__ import annotations
 import os
 import time
 import hashlib
+import warnings
 from io import BytesIO
 from typing import Any
 
@@ -413,10 +414,23 @@ def _detect_datetime_column(df: pd.DataFrame) -> str | None:
         if pd.api.types.is_datetime64_any_dtype(df[col]):
             return col
     for col in df.select_dtypes(include=['object']).columns:
-        parsed = pd.to_datetime(df[col], errors='coerce')
-        non_null_ratio = parsed.notna().mean()
-        if non_null_ratio >= 0.6 and parsed.nunique(dropna=True) >= 5:
-            return col
+        # Parsing full columns can be expensive and noisy on hosted environments.
+        # Sample a subset for a best-effort detection.
+        s = df[col].dropna()
+        if s.empty:
+            continue
+        if len(s) > 2000:
+            s = s.head(2000)
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                'ignore',
+                message='Could not infer format*',
+                category=UserWarning,
+            )
+            parsed = pd.to_datetime(s, errors='coerce', cache=True)
+        non_null_ratio = float(parsed.notna().mean())
+        if non_null_ratio >= 0.6 and int(parsed.nunique(dropna=True)) >= 5:
+            return str(col)
     return None
 
 def generate_additional_visualizations(df: pd.DataFrame, filename: str) -> dict:
@@ -1171,7 +1185,7 @@ def download_report(filename: str):
         from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
         from reportlab.lib.units import cm
         from reportlab.platypus import Image as RLImage
-        from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+        from reportlab.platypus import KeepInFrame, PageBreak, Paragraph, SimpleDocTemplate, Spacer
 
         df = _read_uploaded_csv(filename)
         ctx = _build_report_context(df, filename, eval_result=None, cm_image=None)
@@ -1225,12 +1239,26 @@ def download_report(filename: str):
             path = os.path.join(app.config['STATIC_IMAGE_FOLDER'], image_filename)
             if not os.path.exists(path):
                 return
+
+            # Start each chart on a new page to prevent "Flowable too large" errors,
+            # then shrink to fit within the printable frame.
+            story.append(PageBreak())
             story.append(Paragraph(caption, h))
+            story.append(Spacer(1, 6))
+
             img = RLImage(path)
-            img.drawWidth = 16.5 * cm
-            img.drawHeight = img.drawHeight * (img.drawWidth / img.imageWidth)
-            story.append(img)
-            story.append(Spacer(1, 12))
+            max_w = float(doc.width)
+            # leave room for caption + padding
+            max_h = float(doc.height) - (2.2 * cm)
+            # Best-effort: make the raw image fit inside available area
+            try:
+                img._restrictSize(max_w, max_h)
+            except Exception:
+                pass
+
+            # KeepInFrame will shrink further if needed (never overflows)
+            story.append(KeepInFrame(max_w, max_h, [img], mode='shrink'))
+            story.append(Spacer(1, 10))
 
         # Main + extra charts
         if ctx.get('plot_image'):
