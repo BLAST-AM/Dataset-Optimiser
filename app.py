@@ -22,31 +22,38 @@ import time
 import hashlib
 import warnings
 from io import BytesIO
-from functools import lru_cache
 from typing import Any
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import seaborn as sns
 from flask import Flask, redirect, render_template, request, send_file
 from werkzeug.utils import secure_filename
 
+from sklearn.compose import ColumnTransformer
+from sklearn.decomposition import PCA
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn.impute import KNNImputer, SimpleImputer
+from sklearn.linear_model import LinearRegression, LogisticRegression
+from sklearn.metrics import (
+    accuracy_score,
+    confusion_matrix,
+    f1_score,
+    mean_absolute_error,
+    mean_squared_error,
+    precision_score,
+    r2_score,
+    recall_score,
+)
+from sklearn.model_selection import train_test_split
+from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.svm import SVC, SVR
 
-@lru_cache(maxsize=1)
-def _plot_libs():
-    """Lazy-load plotting libraries.
-
-    This significantly improves cold-start time on small hosting tiers by
-    deferring heavy imports until a request needs charts.
-    """
-    import matplotlib
-
-    # Force a non-GUI backend (required for server environments)
-    matplotlib.use('Agg')
-
-    import matplotlib.pyplot as plt  # noqa: WPS433
-    import seaborn as sns  # noqa: WPS433
-
-    return plt, sns
+# Matplotlib: force a non-GUI backend (required for server environments)
+plt.switch_backend('Agg')
 
 app = Flask(__name__)
 
@@ -247,7 +254,6 @@ def _safe_stem(filename: str) -> str:
 
 def _save_current_figure(image_filename: str) -> str:
     """Save the current Matplotlib figure into `static/images/` and return the filename."""
-    plt, _sns = _plot_libs()
     plot_path = os.path.join(app.config['STATIC_IMAGE_FOLDER'], image_filename)
     plt.tight_layout()
     plt.savefig(plot_path)
@@ -432,7 +438,6 @@ def generate_additional_visualizations(df: pd.DataFrame, filename: str) -> dict:
 
     Returns a dict of {key: image_filename}. Keys are stable for templates.
     """
-    plt, sns = _plot_libs()
     images: dict[str, str] = {}
     stem = _safe_stem(filename)
     nonce = str(int(time.time() * 1000))
@@ -558,7 +563,6 @@ def compute_dataset_details(df: pd.DataFrame) -> dict:
 
 def _plot_confusion_matrix(cm: np.ndarray, labels: list[str], title: str, out_filename: str) -> str:
     """Render and save a confusion matrix heatmap."""
-    plt, sns = _plot_libs()
     plt.clf()
     plt.figure(figsize=(8, 6))
     annotate = len(labels) <= 10
@@ -679,7 +683,6 @@ def _plot_regression_diagnostics(
     out_filename: str,
 ) -> str:
     """Create a simple regression plot (Actual vs Predicted) and persist it as an image."""
-    plt, sns = _plot_libs()
     plt.figure(figsize=(7, 6))
     sns.scatterplot(x=y_true, y=y_pred, alpha=0.7)
     # identity line
@@ -773,8 +776,6 @@ def _one_hot_encode(df: pd.DataFrame) -> tuple[pd.DataFrame, str]:
     return out, f"One-hot encoded {len(cat_cols)} categorical columns."
 
 def _scale_numeric(df: pd.DataFrame, exclude_cols: list[str] | None = None) -> tuple[pd.DataFrame, str]:
-    from sklearn.preprocessing import StandardScaler
-
     exclude_cols = exclude_cols or []
     out = df.copy()
     num_cols = [c for c in out.select_dtypes(include=[np.number]).columns.tolist() if c not in exclude_cols]
@@ -797,9 +798,6 @@ def _drop_correlated(df: pd.DataFrame, threshold: float = 0.9, exclude_cols: lis
     return out, f"Dropped {len(to_drop)} highly correlated columns (>|{threshold}|)." if to_drop else "No highly correlated columns found to drop."
 
 def _apply_pca(df: pd.DataFrame, target_col: str | None = None, variance: float = 0.95) -> tuple[pd.DataFrame, str]:
-    from sklearn.decomposition import PCA
-    from sklearn.preprocessing import StandardScaler
-
     out = df.copy()
     exclude = [target_col] if target_col else []
     num_cols = [c for c in out.select_dtypes(include=[np.number]).columns.tolist() if c not in exclude]
@@ -817,8 +815,6 @@ def _apply_pca(df: pd.DataFrame, target_col: str | None = None, variance: float 
     return out, f"PCA applied: reduced {len(num_cols)} numeric cols -> {len(comp_cols)} components (95% variance)."
 
 def _feature_select_rf(df: pd.DataFrame, target: str) -> tuple[pd.DataFrame, str]:
-    from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
-
     if target not in df.columns:
         return df, "Feature selection skipped (target column not found)."
 
@@ -894,7 +890,6 @@ def generate_plot(df: pd.DataFrame, filename: str) -> str:
     Generates a simple bar chart of missing values.
     Saves it to static/images/ and returns the relative path.
     """
-    plt, sns = _plot_libs()
     # clear any existing plots to prevent overlap
     plt.clf() 
     
@@ -966,26 +961,6 @@ def evaluate_model():
         test_size = 0.2
 
     try:
-        from sklearn.compose import ColumnTransformer
-        from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
-        from sklearn.impute import SimpleImputer
-        from sklearn.linear_model import LinearRegression, LogisticRegression
-        from sklearn.metrics import (
-            accuracy_score,
-            confusion_matrix,
-            f1_score,
-            mean_absolute_error,
-            mean_squared_error,
-            precision_score,
-            r2_score,
-            recall_score,
-        )
-        from sklearn.model_selection import train_test_split
-        from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
-        from sklearn.pipeline import Pipeline
-        from sklearn.preprocessing import OneHotEncoder, StandardScaler
-        from sklearn.svm import SVC, SVR
-
         df = _read_uploaded_csv(filename)
         eval_possible, eval_targets, eval_reason = _eval_capabilities(df)
         if not eval_possible:
@@ -1424,8 +1399,6 @@ def clean_data():
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
 
     try:
-        from sklearn.impute import KNNImputer, SimpleImputer
-
         df = _read_csv_safely(filepath)
         original_shape = df.shape
         
